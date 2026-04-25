@@ -137,3 +137,17 @@ Any other body content — headings, static text, extra sections — is preserve
 #### `templates/notes.md`
 
 The body of the reading note is copied verbatim with no substitutions. Edit it to change the default section structure that appears in every new reading note.
+
+## Other resources
+
+This repository stems from me wanting two functionalities:
+
+1. Bulk import all of my highlights
+2. Auto creating notes with _similar_, but not exactly the same, properties as my highlight note, which I can then use to write down all of my thoughts.
+
+I had Claude mostly write this code for me (thank you).
+
+For a more polished experience, these two Obsidian community plugins are great:
+
+- [obsidian-zoter-integration by Matthew Meyers](https://github.com/obsidian-community/obsidian-zotero-integration)
+- [obsidian-zotflow by Xianpi Duan](https://github.com/duanxianpi/obsidian-zotflow)

@@ -1,0 +1,46 @@
+filters:
+  and:
+    - categories.contains(link("Papers"))
+formulas:
+  title: link(file, note.title)
+views:
+  - type: table
+    name: Table
+    order:
+      - read
+      - formula.title
+      - people
+      - date
+      - journal
+      - topics
+    sort:
+      - property: date
+        direction: DESC
+  - type: table
+    name: Read
+    filters:
+      and:
+        - read == true
+    order:
+      - formula.title
+      - people
+      - date
+      - journal
+      - topics
+    sort:
+      - property: date
+        direction: DESC
+  - type: table
+    name: Unread
+    filters:
+      and:
+        - read != true
+    order:
+      - formula.title
+      - people
+      - date
+      - journal
+      - topics
+    sort:
+      - property: date
+        direction: DESC

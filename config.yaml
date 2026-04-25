@@ -1,8 +1,8 @@
 settings:
   zotero_db: ~/Zotero/zotero.sqlite
-  obsidian_vault: .
-  literature_dir: Literature
-  reading_dir: Notes
+  obsidian_vault: /Users/brendan/Github/obsidian/Brendan obsidian
+  literature_dir: Zotero
+  reading_dir: Papers
   color_emojis: false
 
 import_note:
