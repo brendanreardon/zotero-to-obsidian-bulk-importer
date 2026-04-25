@@ -8,6 +8,7 @@ people:
 - "[[AUTHOR]]"
 pmid: {{PMID}}
 title: {{TITLE}}
+note: "[[ZOTERO_KEY]]"
 url: {{URL}}
 zotero_key: {{ZOTERO_KEY}}
 tags:

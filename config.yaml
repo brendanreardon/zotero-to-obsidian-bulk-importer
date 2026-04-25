@@ -3,7 +3,7 @@ settings:
   obsidian_vault: .
   literature_dir: Literature
   reading_dir: Notes
-  color_emojis: true
+  color_emojis: false
 
 import_note:
   filename_suffix: "-Zotero"
@@ -16,6 +16,7 @@ import_note:
     people: authors_wikilink
     pmid: pmid
     title: title
+    note: reading_wikilink
     url: url
     zotero_key: key
     tags: ["zotero"]

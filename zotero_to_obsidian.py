@@ -46,8 +46,7 @@ COLOR_EMOJI = {
 
 ANNOTATION_TYPE_NAME = {1: "highlight", 2: "note", 3: "underline", 4: "image", 5: "ink"}
 
-_ILLEGAL_CHARS = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
-_PMID_RE       = re.compile(r"PMID:\s*(\d+)")
+_PMID_RE = re.compile(r"PMID:\s*(\d+)")
 
 
 # ── ZoteroReader ───────────────────────────────────────────────────────────────
@@ -254,6 +253,8 @@ class NoteBuilder:
             return self._journal_wikilink(item.get("journal", ""))
         if value == "import_wikilink":
             return f"[[{item['_import_name']}]]"
+        if value == "reading_wikilink":
+            return f"[[{item['_reading_name']}]]"
         if value in item:
             result = item[value]
             # Empty variable lookups are omitted so the field doesn't clutter the FM.
@@ -297,9 +298,12 @@ class NoteBuilder:
         parts = template.split("---", 2)
         body  = parts[2] if len(parts) >= 3 else "\n"
 
-        # Inject the computed import note filename so import_wikilink can resolve it.
-        imp_suffix = config["import_note"].get("filename_suffix", "")
-        item = {**item, "_import_name": item["key"] + imp_suffix}
+        # Inject computed filenames so import_wikilink / reading_wikilink can resolve them.
+        imp_suffix  = config["import_note"].get("filename_suffix", "")
+        read_suffix = config["reading_note"].get("filename_suffix", "")
+        item = {**item,
+                "_import_name":  item["key"] + imp_suffix,
+                "_reading_name": item["key"] + read_suffix}
 
         fm_str = self._build_frontmatter(section["frontmatter"], item)
 
@@ -377,28 +381,6 @@ def _load_config(script_dir: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def make_filename(item: dict, fmt: str, max_len: int = 80) -> str:
-    authors = item["authors"]
-    first_author = "Unknown"
-    for a in authors:
-        last = (a.get("lastName") or "").strip()
-        first = (a.get("firstName") or "").strip()
-        if last:
-            first_author = last
-            break
-        if first:
-            first_author = first
-            break
-
-    title = item["title"] or "Untitled"
-    year  = item["year"] or "n.d."
-
-    name = fmt.format(author=first_author, year=year, title=title)
-    if len(name) > max_len:
-        name = name[:max_len].rstrip()
-    name = _ILLEGAL_CHARS.sub("_", name).strip("_ ")
-    return name or item["key"]
-
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
@@ -419,12 +401,11 @@ def main() -> None:
     config   = _load_config(SCRIPT_DIR)
     settings = config["settings"]
 
-    zotero_db       = Path(settings["zotero_db"]).expanduser()
-    obsidian_vault  = Path(settings["obsidian_vault"]).expanduser()
-    literature_dir  = settings["literature_dir"]
-    reading_dir     = settings["reading_dir"]
-    filename_format = settings["filename_format"]
-    color_emojis    = bool(settings.get("color_emojis", True))
+    zotero_db      = Path(settings["zotero_db"]).expanduser()
+    obsidian_vault = Path(settings["obsidian_vault"]).expanduser()
+    literature_dir = settings["literature_dir"]
+    reading_dir    = settings["reading_dir"]
+    color_emojis   = bool(settings.get("color_emojis", True))
 
     reader  = ZoteroReader(zotero_db)
     builder = NoteBuilder(color_emojis=color_emojis)
@@ -441,13 +422,14 @@ def main() -> None:
 
     for meta in items_meta:
         item        = reader.build_item(meta["itemID"], meta["key"], meta["typeName"])
-        imp_name  = item["key"] + config["import_note"].get("filename_suffix", "")
-        imp_path  = writer.import_path(imp_name)
-        read_path = writer.reading_path_for(make_filename(item, filename_format))
+        imp_name    = item["key"] + config["import_note"].get("filename_suffix", "")
+        read_name   = item["key"] + config["reading_note"].get("filename_suffix", "")
+        imp_path    = writer.import_path(imp_name)
+        read_path   = writer.reading_path_for(read_name)
         read_exists = writer.reading_note_exists(item["key"])
 
         if args.dry_run:
-            #print(f"[{item['key']}] import={imp_name!r}  reading={make_filename(item, filename_format)!r}")
+            print(f"[{item['key']}] import={imp_name!r}  reading={read_name!r}")
             print(f"  Import note:  {imp_path}  → WRITE")
             if read_exists:
                 print(f"  Reading note: SKIP (zotero_key already present in vault)")
