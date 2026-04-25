@@ -142,10 +142,11 @@ The body of the reading note is copied verbatim with no substitutions. Edit it t
 
 ## Other resources
 
-This repository stems from me wanting two functionalities:
+This repository stems from me wanting three functionalities:
 
 1. Bulk import all of my highlights
 2. Auto creating notes with _similar_, but not exactly the same, properties as my highlight note, which I can then use to write down all of my thoughts.
+3. Keeping my Obsidian plugins relatively minimal.
 
 I had Claude mostly write this code for me (thank you).
 
