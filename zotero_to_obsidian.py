@@ -13,16 +13,19 @@ from pathlib import Path
 
 import yaml
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-ZOTERO_DB      = Path("~/Zotero/zotero.sqlite").expanduser()
-#OBSIDIAN_VAULT = Path("~/path/to/your/vault").expanduser()
-OBSIDIAN_VAULT = Path(".")
-LITERATURE_DIR = "Literature"
-READING_DIR    = "Notes"
-FILENAME_FORMAT = "{year} {author} - {title}"
-
 # ── Constants ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
+
+# Sentinel returned by _resolve_value to signal "omit this field from frontmatter".
+# Distinct from None, which represents an explicit YAML null (e.g. `read:`).
+_OMIT = object()
+
+# Render None as a blank YAML null ("key:") rather than the word "null".
+# Obsidian treats blank-value keys as boolean checkboxes.
+yaml.add_representer(
+    type(None),
+    lambda dumper, _: dumper.represent_scalar("tag:yaml.org,2002:null", ""),
+)
 
 IMPORT_TYPES = frozenset({
     "journalArticle", "conferencePaper", "preprint",
@@ -163,6 +166,9 @@ class ZoteroReader:
 class NoteBuilder:
     """Render Markdown notes from a Zotero item dict using external templates and config."""
 
+    def __init__(self, color_emojis: bool = True) -> None:
+        self.color_emojis = color_emojis
+
     def _author_names(self, authors: list[dict]) -> list[str]:
         out = []
         for a in authors:
@@ -175,10 +181,10 @@ class NoteBuilder:
                 out.append(first)
         return out
 
-    def _authors_wikilink(self, authors: list[dict]) -> list[str] | None:
-        """First and last author as wikilink strings; None if no authors."""
+    def _authors_wikilink(self, authors: list[dict]):
+        """First and last author as [[wikilink]] strings; _OMIT if no authors."""
         if not authors:
-            return None
+            return _OMIT
         selected = [authors[0]] if len(authors) == 1 else [authors[0], authors[-1]]
         out = []
         for a in selected:
@@ -187,7 +193,10 @@ class NoteBuilder:
             name  = f"{first} {last}".strip() if first else last
             if name:
                 out.append(f"[[{name}]]")
-        return out or None
+        return out if out else _OMIT
+
+    def _journal_wikilink(self, journal: str):
+        return f"[[{journal}]]" if journal else _OMIT
 
     def _strip_html(self, text: str) -> str:
         text = html.unescape(text)
@@ -202,12 +211,15 @@ class NoteBuilder:
         comment = (ann.get("comment") or "").strip()
         if not text and not comment:
             return ""
-        emoji    = self._annotation_emoji(ann.get("color"))
         page     = ann.get("pageLabel") or ""
         page_str = f" (p. {page})" if page else ""
         lines = []
         if text:
-            lines.append(f"> {emoji} {text}{page_str}")
+            if self.color_emojis:
+                emoji = self._annotation_emoji(ann.get("color"))
+                lines.append(f"> {emoji} {text}{page_str}")
+            else:
+                lines.append(f"> {text}{page_str}")
         if comment:
             lines.append(f"> *{comment}*")
         return "\n".join(lines)
@@ -219,33 +231,42 @@ class NoteBuilder:
     def _resolve_value(self, value, item: dict):
         """
         Resolve a config frontmatter value to its final form:
-          - list            → static, returned as-is
-          - "today"         → today's date as YYYY-MM-DD
+          - list               → each element resolved; _OMIT elements dropped
+          - None               → kept as-is (explicit YAML null, e.g. `read:`)
+          - "today"            → today's date as YYYY-MM-DD
           - "authors_wikilink" → first/last authors as [[Name]] wikilinks
-          - other string matching an item dict key → looked-up value (None if empty)
-          - other string    → static string returned as-is (preserves explicit "")
+          - "journal_wikilink" → journal wrapped in [[...]]
+          - "import_wikilink"  → [[key + import filename_suffix]], links to the highlights file
+          - other string matching an item dict key → looked-up value (_OMIT if empty)
+          - other string       → static value returned as-is
         """
         if isinstance(value, list):
-            return value
+            resolved = [self._resolve_value(v, item) for v in value]
+            result = [r for r in resolved if r is not _OMIT]
+            return result if result else _OMIT
         if not isinstance(value, str):
-            return value
+            return value  # None passes through as explicit YAML null
         if value == "today":
             return datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if value == "authors_wikilink":
             return self._authors_wikilink(item["authors"])
+        if value == "journal_wikilink":
+            return self._journal_wikilink(item.get("journal", ""))
+        if value == "import_wikilink":
+            return f"[[{item['_import_name']}]]"
         if value in item:
             result = item[value]
             # Empty variable lookups are omitted so the field doesn't clutter the FM.
             if isinstance(result, str) and not result:
-                return None
+                return _OMIT
             return result
-        # Static string (including explicit empty string like `read: ""`).
+        # Static string — returned as-is (no special meaning).
         return value
 
     def _build_frontmatter(self, fm_config: dict, item: dict) -> str:
         fm = {k: self._resolve_value(v, item) for k, v in fm_config.items()}
-        # Filter None; keep empty strings (they represent explicit static values).
-        clean = {k: v for k, v in fm.items() if v is not None}
+        # Drop _OMIT (empty variable lookups); keep None (explicit config nulls like `read:`).
+        clean = {k: v for k, v in fm.items() if v is not _OMIT}
         return yaml.dump(clean, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     def _render_body(self, body: str, item: dict) -> str:
@@ -275,6 +296,10 @@ class NoteBuilder:
         # Split on --- to separate the template's placeholder frontmatter from the body.
         parts = template.split("---", 2)
         body  = parts[2] if len(parts) >= 3 else "\n"
+
+        # Inject the computed import note filename so import_wikilink can resolve it.
+        imp_suffix = config["import_note"].get("filename_suffix", "")
+        item = {**item, "_import_name": item["key"] + imp_suffix}
 
         fm_str = self._build_frontmatter(section["frontmatter"], item)
 
@@ -352,7 +377,7 @@ def _load_config(script_dir: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def make_filename(item: dict, fmt: str = FILENAME_FORMAT, max_len: int = 80) -> str:
+def make_filename(item: dict, fmt: str, max_len: int = 80) -> str:
     authors = item["authors"]
     first_author = "Unknown"
     for a in authors:
@@ -391,10 +416,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config  = _load_config(SCRIPT_DIR)
-    reader  = ZoteroReader(ZOTERO_DB)
-    builder = NoteBuilder()
-    writer  = ObsidianWriter(OBSIDIAN_VAULT, LITERATURE_DIR, READING_DIR)
+    config   = _load_config(SCRIPT_DIR)
+    settings = config["settings"]
+
+    zotero_db       = Path(settings["zotero_db"]).expanduser()
+    obsidian_vault  = Path(settings["obsidian_vault"]).expanduser()
+    literature_dir  = settings["literature_dir"]
+    reading_dir     = settings["reading_dir"]
+    filename_format = settings["filename_format"]
+    color_emojis    = bool(settings.get("color_emojis", True))
+
+    reader  = ZoteroReader(zotero_db)
+    builder = NoteBuilder(color_emojis=color_emojis)
+    writer  = ObsidianWriter(obsidian_vault, literature_dir, reading_dir)
 
     items_meta = reader.get_qualifying_items(key=args.key)
     if args.key and not items_meta:
@@ -406,15 +440,14 @@ def main() -> None:
     reading_skipped  = 0
 
     for meta in items_meta:
-        item     = reader.build_item(meta["itemID"], meta["key"], meta["typeName"])
-        filename = make_filename(item)
-
-        imp_path    = writer.import_path(filename)
-        read_path   = writer.reading_path_for(filename)
+        item        = reader.build_item(meta["itemID"], meta["key"], meta["typeName"])
+        imp_name  = item["key"] + config["import_note"].get("filename_suffix", "")
+        imp_path  = writer.import_path(imp_name)
+        read_path = writer.reading_path_for(make_filename(item, filename_format))
         read_exists = writer.reading_note_exists(item["key"])
 
         if args.dry_run:
-            print(f"[{item['key']}] {filename!r}")
+            #print(f"[{item['key']}] import={imp_name!r}  reading={make_filename(item, filename_format)!r}")
             print(f"  Import note:  {imp_path}  → WRITE")
             if read_exists:
                 print(f"  Reading note: SKIP (zotero_key already present in vault)")

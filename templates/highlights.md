@@ -3,12 +3,13 @@ categories:
 - "[[Zotero Highlights]]"
 date: {{DATE}}
 doi: {{DOI}}
-journal: [[{{PUBLICATION}}]]
+journal: "[[PUBLICATION]]"
 people:
 - "[[AUTHOR]]"
 pmid: {{PMID}}
 title: {{TITLE}}
 url: {{URL}}
+zotero_key: {{ZOTERO_KEY}}
 tags:
 - zotero
 ---

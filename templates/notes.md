@@ -1,15 +1,20 @@
 ---
 categories:
 - "[[Papers]]"
+aliases:
+- "{{TITLE}}"
 date: {{DATE}}
 doi: {{DOI}}
-journal: [[{{PUBLICATION}}]]
+highlights: "[[ZOTERO_KEY]]"
+journal: "[[PUBLICATION]]"
 people:
 - "[[AUTHOR]]"
 pmid: {{PMID}}
 title: {{TITLE}}
+topics:
 url: {{URL}}
-read: 
+read:
+zotero_key: {{ZOTERO_KEY}}
 tags:
 - papers
 ---
