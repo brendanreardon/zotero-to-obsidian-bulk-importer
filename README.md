@@ -1,2 +1,3 @@
-# zotero-to-obsidian-bulk-importer
+# Zotero to Obsidian Bulk Importer
+
 Bulk importing from Zotero to Obsidian
