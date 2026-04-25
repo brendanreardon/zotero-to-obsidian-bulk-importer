@@ -1,6 +1,6 @@
 settings:
   zotero_db: ~/Zotero/zotero.sqlite
-  obsidian_vault: /Users/brendan/Github/obsidian/Brendan obsidian
+  obsidian_vault: .
   literature_dir: Zotero
   reading_dir: Papers
   color_emojis: false
