@@ -1,6 +1,8 @@
 #!/opt/miniconda3/envs/zotero-obsidian/bin/python
 """Sync Zotero items to an Obsidian vault by reading from the local SQLite database."""
 
+from __future__ import annotations
+
 import argparse
 import html
 import re
@@ -14,12 +16,14 @@ import yaml
 # ── Configuration ──────────────────────────────────────────────────────────────
 ZOTERO_DB      = Path("~/Zotero/zotero.sqlite").expanduser()
 #OBSIDIAN_VAULT = Path("~/path/to/your/vault").expanduser()
-OBSIDIAN_VAULT = "."
+OBSIDIAN_VAULT = Path(".")
 LITERATURE_DIR = "Literature"
 READING_DIR    = "Notes"
 FILENAME_FORMAT = "{year} {author} - {title}"
 
 # ── Constants ──────────────────────────────────────────────────────────────────
+SCRIPT_DIR = Path(__file__).parent
+
 IMPORT_TYPES = frozenset({
     "journalArticle", "conferencePaper", "preprint",
     "book", "bookSection", "report",
@@ -40,6 +44,7 @@ COLOR_EMOJI = {
 ANNOTATION_TYPE_NAME = {1: "highlight", 2: "note", 3: "underline", 4: "image", 5: "ink"}
 
 _ILLEGAL_CHARS = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+_PMID_RE       = re.compile(r"PMID:\s*(\d+)")
 
 
 # ── ZoteroReader ───────────────────────────────────────────────────────────────
@@ -112,11 +117,27 @@ class ZoteroReader:
         ).fetchall()
         return [r[0] for r in rows if r[0]]
 
+    def _get_extra(self, item_id: int) -> str:
+        """Parse PMID from the free-text extra field (e.g. 'PMID: 12345678')."""
+        row = self.conn.execute("""
+            SELECT idv.value
+            FROM itemData id
+            JOIN fieldsCombined f ON id.fieldID = f.fieldID
+            JOIN itemDataValues idv ON id.valueID = idv.valueID
+            WHERE id.itemID = ? AND f.fieldName = 'extra'
+        """, (item_id,)).fetchone()
+        if not row:
+            return ""
+        m = _PMID_RE.search(row[0])
+        return m.group(1) if m else ""
+
     def build_item(self, item_id: int, key: str, type_name: str) -> dict:
         fields = self._get_fields(item_id)
         date_str = fields.get("date", "")
         m = re.search(r"\b(\d{4})\b", date_str)
         year = m.group(1) if m else ""
+        # Direct PMID field takes priority; fall back to parsing the extra field.
+        pmid = fields.get("PMID", "") or self._get_extra(item_id)
         return {
             "itemID":      item_id,
             "key":         key,
@@ -130,6 +151,7 @@ class ZoteroReader:
             "volume":      fields.get("volume", ""),
             "issue":       fields.get("issue", ""),
             "pages":       fields.get("pages", ""),
+            "pmid":        pmid,
             "authors":     self._get_authors(item_id),
             "annotations": self._get_annotations(item_id),
             "notes":       self._get_notes(item_id),
@@ -139,7 +161,7 @@ class ZoteroReader:
 # ── NoteBuilder ────────────────────────────────────────────────────────────────
 
 class NoteBuilder:
-    """Render Markdown import and reading notes from a Zotero item dict."""
+    """Render Markdown notes from a Zotero item dict using external templates and config."""
 
     def _author_names(self, authors: list[dict]) -> list[str]:
         out = []
@@ -152,6 +174,20 @@ class NoteBuilder:
             elif first:
                 out.append(first)
         return out
+
+    def _authors_wikilink(self, authors: list[dict]) -> list[str] | None:
+        """First and last author as wikilink strings; None if no authors."""
+        if not authors:
+            return None
+        selected = [authors[0]] if len(authors) == 1 else [authors[0], authors[-1]]
+        out = []
+        for a in selected:
+            first = (a.get("firstName") or "").strip()
+            last  = (a.get("lastName")  or "").strip()
+            name  = f"{first} {last}".strip() if first else last
+            if name:
+                out.append(f"[[{name}]]")
+        return out or None
 
     def _strip_html(self, text: str) -> str:
         text = html.unescape(text)
@@ -180,59 +216,72 @@ class NoteBuilder:
         clean = {k: v for k, v in data.items() if v is not None and v != ""}
         return yaml.dump(clean, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    def import_note(self, item: dict) -> str:
-        author_names = self._author_names(item["authors"])
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def _resolve_value(self, value, item: dict):
+        """
+        Resolve a config frontmatter value to its final form:
+          - list            → static, returned as-is
+          - "today"         → today's date as YYYY-MM-DD
+          - "authors_wikilink" → first/last authors as [[Name]] wikilinks
+          - other string matching an item dict key → looked-up value (None if empty)
+          - other string    → static string returned as-is (preserves explicit "")
+        """
+        if isinstance(value, list):
+            return value
+        if not isinstance(value, str):
+            return value
+        if value == "today":
+            return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if value == "authors_wikilink":
+            return self._authors_wikilink(item["authors"])
+        if value in item:
+            result = item[value]
+            # Empty variable lookups are omitted so the field doesn't clutter the FM.
+            if isinstance(result, str) and not result:
+                return None
+            return result
+        # Static string (including explicit empty string like `read: ""`).
+        return value
 
-        fm: dict = {"zotero_key": item["key"]}
-        if item["title"]:      fm["title"]   = item["title"]
-        if author_names:       fm["authors"] = author_names
-        if item["year"]:       fm["year"]    = item["year"]
-        if item["journal"]:    fm["journal"] = item["journal"]
-        if item["doi"]:        fm["doi"]     = item["doi"]
-        fm["tags"]          = ["literature"]
-        fm["last_imported"] = now
+    def _build_frontmatter(self, fm_config: dict, item: dict) -> str:
+        fm = {k: self._resolve_value(v, item) for k, v in fm_config.items()}
+        # Filter None; keep empty strings (they represent explicit static values).
+        clean = {k: v for k, v in fm.items() if v is not None}
+        return yaml.dump(clean, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-        lines = ["---", self._dump_frontmatter(fm).rstrip(), "---", ""]
+    def _render_body(self, body: str, item: dict) -> str:
+        abstract = item.get("abstract", "") or ""
 
-        lines += ["## Abstract", ""]
-        if item["abstract"]:
-            lines.append(item["abstract"])
-        lines.append("")
-
-        lines += ["## Annotations", ""]
         ann_blocks = [self._format_annotation(a) for a in item["annotations"]]
         ann_blocks = [b for b in ann_blocks if b]
-        if ann_blocks:
-            lines.append("\n\n".join(ann_blocks))
-        lines.append("")
+        highlights = "\n\n".join(ann_blocks)
 
-        lines += ["## Notes", ""]
+        note_parts = []
         for note_html in item["notes"]:
             plain = self._strip_html(note_html)
             if plain:
-                lines += [plain, ""]
+                note_parts.append(plain)
+        notes = "\n\n".join(note_parts)
 
-        return "\n".join(lines)
+        body = body.replace("{{ABSTRACT}}", abstract)
+        body = body.replace("{{HIGHLIGHTS}}", highlights)
+        body = body.replace("{{NOTES FROM ZOTERO}}", notes)
+        return body
 
-    def reading_note(self, item: dict) -> str:
-        author_names = self._author_names(item["authors"])
+    def render(self, item: dict, note_type: str, config: dict, script_dir: Path) -> str:
+        section       = config[note_type]
+        template_path = script_dir / section["template"]
+        template      = template_path.read_text(encoding="utf-8")
 
-        fm: dict = {"zotero_key": item["key"]}
-        if item["title"]:  fm["title"]   = item["title"]
-        if author_names:   fm["people"] = author_names
-        if item["year"]:   fm["year"]    = item["year"]
-        fm["tags"]   = ["reading-note"]
-        fm["status"] = "unread"
+        # Split on --- to separate the template's placeholder frontmatter from the body.
+        parts = template.split("---", 2)
+        body  = parts[2] if len(parts) >= 3 else "\n"
 
-        lines = ["---", self._dump_frontmatter(fm).rstrip(), "---", ""]
-        lines += [
-            "## Summary", "",
-            "## Key Takeaways", "",
-            "## Questions & Criticisms", "",
-            "## Connection to My Work", "",
-        ]
-        return "\n".join(lines)
+        fm_str = self._build_frontmatter(section["frontmatter"], item)
+
+        if note_type == "import_note":
+            body = self._render_body(body, item)
+
+        return f"---\n{fm_str.rstrip()}\n---{body}"
 
 
 # ── ObsidianWriter ─────────────────────────────────────────────────────────────
@@ -297,6 +346,12 @@ def _parse_frontmatter(content: str) -> dict:
         return {}
 
 
+def _load_config(script_dir: Path) -> dict:
+    config_path = script_dir / "config.yaml"
+    with config_path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
 def make_filename(item: dict, fmt: str = FILENAME_FORMAT, max_len: int = 80) -> str:
     authors = item["authors"]
     first_author = "Unknown"
@@ -336,6 +391,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    config  = _load_config(SCRIPT_DIR)
     reader  = ZoteroReader(ZOTERO_DB)
     builder = NoteBuilder()
     writer  = ObsidianWriter(OBSIDIAN_VAULT, LITERATURE_DIR, READING_DIR)
@@ -353,8 +409,8 @@ def main() -> None:
         item     = reader.build_item(meta["itemID"], meta["key"], meta["typeName"])
         filename = make_filename(item)
 
-        imp_path  = writer.import_path(filename)
-        read_path = writer.reading_path_for(filename)
+        imp_path    = writer.import_path(filename)
+        read_path   = writer.reading_path_for(filename)
         read_exists = writer.reading_note_exists(item["key"])
 
         if args.dry_run:
@@ -365,19 +421,23 @@ def main() -> None:
             else:
                 print(f"  Reading note: {read_path}  → CREATE")
         else:
-            writer.write_import_note(imp_path, builder.import_note(item))
+            writer.write_import_note(imp_path, builder.render(item, "import_note", config, SCRIPT_DIR))
             import_written += 1
 
             if read_exists:
                 reading_skipped += 1
             else:
-                writer.write_reading_note(read_path, builder.reading_note(item), item["key"])
+                writer.write_reading_note(
+                    read_path,
+                    builder.render(item, "reading_note", config, SCRIPT_DIR),
+                    item["key"],
+                )
                 reading_created += 1
 
     reader.close()
 
     if args.dry_run:
-        total = len(items_meta)
+        total      = len(items_meta)
         would_skip = sum(1 for m in items_meta if writer.reading_note_exists(m["key"]))
         print(f"\n--- Dry run summary ---")
         print(f"Items found:           {total}")
