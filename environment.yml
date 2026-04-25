@@ -1,0 +1,8 @@
+name: zotero-obsidian
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+    - PyYAML

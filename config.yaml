@@ -1,0 +1,41 @@
+settings:
+  zotero_db: ~/Zotero/zotero.sqlite
+  obsidian_vault: /Users/brendan/Github/obsidian/Brendan obsidian
+  literature_dir: Zotero
+  reading_dir: Papers
+  color_emojis: false
+
+import_note:
+  filename_suffix: "-Zotero"
+  template: templates/highlights.md
+  frontmatter:
+    categories: ["[[Zotero Highlights]]"]
+    date: today
+    doi: doi
+    journal: journal_wikilink
+    people: authors_wikilink
+    pmid: pmid
+    title: title
+    note: reading_wikilink
+    url: url
+    zotero_key: key
+    tags: ["zotero"]
+
+reading_note:
+  filename_suffix: ""
+  template: templates/notes.md
+  frontmatter:
+    categories: ["[[Papers]]"]
+    aliases:
+      - title
+    date: today
+    doi: doi
+    highlights: import_wikilink
+    journal: journal_wikilink
+    people: authors_wikilink
+    pmid: pmid
+    title: title
+    url: url
+    read:
+    zotero_key: key
+    tags: ["papers"]
