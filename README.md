@@ -9,6 +9,14 @@ For each qualifying item (journal articles, conference papers, preprints, books,
 
 Settings can be configured in [config.yaml](./config.yaml) and I use [Papers.base](./Papers.base) to keep track of papers within Obsidian.
 
+This repository stems from me wanting three functionalities:
+
+1. Bulk import all of my highlights
+2. Auto creating notes with _similar_, but not exactly the same, properties as my highlight note, which I can then use to write down all of my thoughts.
+3. Keeping my Obsidian plugins relatively minimal.
+
+I had Claude mostly write this code for me (thank you).
+
 ## Installation
 
 ### Download
@@ -141,14 +149,6 @@ Any other body content — headings, static text, extra sections — is preserve
 The body of the reading note is copied verbatim with no substitutions. Edit it to change the default section structure that appears in every new reading note.
 
 ## Other resources
-
-This repository stems from me wanting three functionalities:
-
-1. Bulk import all of my highlights
-2. Auto creating notes with _similar_, but not exactly the same, properties as my highlight note, which I can then use to write down all of my thoughts.
-3. Keeping my Obsidian plugins relatively minimal.
-
-I had Claude mostly write this code for me (thank you).
 
 For a more polished experience, these two Obsidian community plugins are great:
 
