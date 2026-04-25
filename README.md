@@ -4,8 +4,10 @@ A script that syncs your Zotero library into an Obsidian vault by reading direct
 
 For each qualifying item (journal articles, conference papers, preprints, books, book sections, and reports), the script creates two notes:
 
-- An **import note** in a literature folder containing YAML frontmatter, the abstract, inline annotations extracted from PDFs, and any standalone Zotero notes. These notes are fully managed by the script and overwritten on each run.
-- A **reading note** in a reading notes folder containing frontmatter and empty section headers for your own writing. This is created once and never overwritten.
+- An **import note** in a [Zotero folder](./Zotero/) containing YAML frontmatter, the abstract, inline annotations extracted from PDFs, and any standalone Zotero notes. These notes are fully managed by the script and overwritten on each run.
+- A **reading note** in a [Papers folder](./Papers/) containing frontmatter and empty section headers for your own writing. This is created once and never overwritten.
+
+Settings can be configured in [config.yaml](./config.yaml) and I use [Papers.base](./Papers.base) to keep track of papers within Obsidian.
 
 ## Installation
 
