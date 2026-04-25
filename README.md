@@ -152,5 +152,5 @@ I had Claude mostly write this code for me (thank you).
 
 For a more polished experience, these two Obsidian community plugins are great:
 
-- [obsidian-zoter-integration by Matthew Meyers](https://github.com/obsidian-community/obsidian-zotero-integration)
+- [obsidian-zotero-integration by Matthew Meyers](https://github.com/obsidian-community/obsidian-zotero-integration)
 - [obsidian-zotflow by Xianpi Duan](https://github.com/duanxianpi/obsidian-zotflow)
