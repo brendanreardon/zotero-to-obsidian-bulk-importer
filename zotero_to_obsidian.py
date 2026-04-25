@@ -136,6 +136,7 @@ class ZoteroReader:
     def build_item(self, item_id: int, key: str, type_name: str) -> dict:
         fields = self._get_fields(item_id)
         date_str = fields.get("date", "")
+        date_str = date_str.split(' ')[0]
         m = re.search(r"\b(\d{4})\b", date_str)
         year = m.group(1) if m else ""
         # Direct PMID field takes priority; fall back to parsing the extra field.
@@ -149,6 +150,7 @@ class ZoteroReader:
             "doi":         fields.get("DOI", ""),
             "url":         fields.get("url", ""),
             "journal":     fields.get("publicationTitle", ""),
+            "date":        date_str,
             "year":        year,
             "volume":      fields.get("volume", ""),
             "issue":       fields.get("issue", ""),

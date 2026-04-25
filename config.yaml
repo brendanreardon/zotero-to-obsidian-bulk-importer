@@ -10,7 +10,7 @@ import_note:
   template: templates/highlights.md
   frontmatter:
     categories: ["[[Zotero Highlights]]"]
-    date: today
+    date: date
     doi: doi
     journal: journal_wikilink
     people: authors_wikilink
@@ -28,7 +28,7 @@ reading_note:
     categories: ["[[Papers]]"]
     aliases:
       - title
-    date: today
+    date: date
     doi: doi
     highlights: import_wikilink
     journal: journal_wikilink
@@ -36,6 +36,6 @@ reading_note:
     pmid: pmid
     title: title
     url: url
-    read:
     zotero_key: key
+    read:
     tags: ["papers"]
